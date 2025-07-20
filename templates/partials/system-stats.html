@@ -1,0 +1,41 @@
+<div class="stat-card">
+    <div class="stat-label">CPU Usage</div>
+    <div class="stat-value">{{printf "%.1f" .System.CPUPercent}}%</div>
+    <div class="progress-bar">
+        <div class="progress-fill {{if lt .System.CPUPercent 50.0}}low{{else}}{{if lt .System.CPUPercent 80.0}}medium{{else}}high{{end}}{{end}}" 
+             style="width: {{.System.CPUPercent}}%"></div>
+    </div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-label">Memory Usage</div>
+    <div class="stat-value">{{printf "%.1f" .System.MemoryPercent}}%</div>
+    <div class="progress-bar">
+        <div class="progress-fill {{if lt .System.MemoryPercent 50.0}}low{{else}}{{if lt .System.MemoryPercent 80.0}}medium{{else}}high{{end}}{{end}}" 
+             style="width: {{.System.MemoryPercent}}%"></div>
+    </div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-label">Disk Usage</div>
+    <div class="stat-value">{{printf "%.1f" .System.DiskPercent}}%</div>
+    <div class="progress-bar">
+        <div class="progress-fill {{if lt .System.DiskPercent 50.0}}low{{else}}{{if lt .System.DiskPercent 80.0}}medium{{else}}high{{end}}{{end}}" 
+             style="width: {{.System.DiskPercent}}%"></div>
+    </div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-label">System Uptime</div>
+    <div class="stat-value" style="font-size: 1.5rem;">{{.System.Uptime}}</div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-label">Network In</div>
+    <div class="stat-value" style="font-size: 1.5rem;">{{printf "%.0f" .System.NetworkIn}} B/s</div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-label">Network Out</div>
+    <div class="stat-value" style="font-size: 1.5rem;">{{printf "%.0f" .System.NetworkOut}} B/s</div>
+</div>

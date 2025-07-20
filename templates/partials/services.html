@@ -1,0 +1,17 @@
+{{range .Services}}
+<div class="service-card">
+    <div class="service-header">
+        <div class="service-name">{{.Name}}</div>
+        <div class="status-indicator {{if .Healthy}}up{{else}}down{{end}}"></div>
+    </div>
+    <div class="service-details">
+        Status: <strong>{{.Status}}</strong>
+    </div>
+    {{if .Details}}
+    <div class="service-details">{{.Details}}</div>
+    {{end}}
+    {{if .Uptime}}
+    <div class="service-uptime">Uptime: {{.Uptime}}</div>
+    {{end}}
+</div>
+{{end}}
