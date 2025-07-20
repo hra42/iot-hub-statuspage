@@ -18,7 +18,7 @@ A lightweight, real-time monitoring dashboard for smart home and IoT environment
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/iot-hub-statuspage.git
+git clone https://github.com/hra42/iot-hub-statuspage.git
 cd iot-hub-statuspage
 ```
 
@@ -219,5 +219,8 @@ This project is released into the public domain under The Unlicense. See [LICENS
 Built with:
 - [Gin Web Framework](https://github.com/gin-gonic/gin)
 - [gopsutil](https://github.com/shirou/gopsutil) for system metrics
-- [templ](https://templ.guide) for HTML templating
-- [HTMX](https://htmx.org) for progressive enhancement
+- [templ](https://templ.guide) for Go templating
+- [Tailwind CSS](https://tailwindcss.com) for styling
+- [Datastar](https://data-star.dev) for reactive UI
+- PostgreSQL for data persistence
+- Server-Sent Events (SSE) for real-time updates
