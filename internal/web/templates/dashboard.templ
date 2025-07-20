@@ -1,0 +1,232 @@
+package templates
+
+import (
+	"fmt"
+	"time"
+	"github.com/hra42/iot-hub-statuspage/internal/types"
+)
+
+type DashboardData struct {
+	Services    []types.ServiceStatus
+	System      SystemStatus
+	LastUpdated time.Time
+}
+
+type SystemStatus struct {
+	CPUPercent    float64
+	MemoryPercent float64
+	DiskPercent   float64
+	NetworkIn     float64
+	NetworkOut    float64
+	Uptime        string
+}
+
+templ Dashboard(data DashboardData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Smart Home Status Dashboard</title>
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@main/bundles/datastar.js"></script>
+			<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+			<style>
+				@keyframes pulse-glow {
+					0%, 100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.5); }
+					50% { box-shadow: 0 0 30px rgba(34, 197, 94, 0.8); }
+				}
+				.glow-green { animation: pulse-glow 2s ease-in-out infinite; }
+				@keyframes pulse-glow-red {
+					0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.5); }
+					50% { box-shadow: 0 0 30px rgba(239, 68, 68, 0.8); }
+				}
+				.glow-red { animation: pulse-glow-red 2s ease-in-out infinite; }
+			</style>
+		</head>
+		<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 min-h-screen text-gray-100">
+			<div data-signals={templ.JSONString(map[string]interface{}{
+				"cpuPercent": fmt.Sprintf("%.1f", data.System.CPUPercent),
+				"memoryPercent": fmt.Sprintf("%.1f", data.System.MemoryPercent),
+				"diskPercent": fmt.Sprintf("%.1f", data.System.DiskPercent),
+				"networkIn": formatBytes(data.System.NetworkIn),
+				"networkOut": formatBytes(data.System.NetworkOut),
+				"uptime": data.System.Uptime,
+				"lastUpdated": data.LastUpdated.Format("2006-01-02 15:04:05"),
+			})} data-on-load="@get('/events')">
+				<div class="container mx-auto px-4 py-8 max-w-7xl">
+				<h1 class="text-5xl font-thin text-center mb-12 text-white">
+					<i class="fas fa-home text-blue-400 mr-4"></i>Smart Home Status
+				</h1>
+				
+				<!-- System Stats -->
+				<div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 mb-10 shadow-2xl border border-gray-700/50" id="system-stats">
+					<h2 class="text-2xl font-light mb-6 text-gray-300">
+						<i class="fas fa-chart-line text-green-400 mr-3"></i>System Metrics
+					</h2>
+					<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+						@SystemStatsCards(data.System)
+					</div>
+				</div>
+				
+				<!-- Services -->
+				<div class="mb-10">
+					<h2 class="text-2xl font-light mb-6 text-gray-300">
+						<i class="fas fa-server text-yellow-400 mr-3"></i>Services
+					</h2>
+					
+					<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="services-grid">
+						@ServicesCards(data.Services)
+					</div>
+				</div>
+				
+				<!-- Last Updated -->
+				<div class="text-center text-gray-400 text-sm mt-12 pb-8">
+					<i class="fas fa-sync-alt text-gray-500 mr-2"></i>
+					Last updated: <span data-text="$lastUpdated" class="font-medium">{ data.LastUpdated.Format("2006-01-02 15:04:05") }</span>
+				</div>
+				</div>
+			</div>
+		</body>
+	</html>
+}
+
+templ SystemStatsCards(system SystemStatus) {
+	<!-- CPU Usage -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3 text-blue-400">
+			<i class="fas fa-microchip"></i>
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">CPU Usage</div>
+		<div class="text-3xl font-bold mb-3 text-white" data-text="`${$cpuPercent}%`">{ fmt.Sprintf("%.1f%%", system.CPUPercent) }</div>
+		<div class="w-full bg-gray-900/50 rounded-full h-3 overflow-hidden shadow-inner">
+			<div class={ "h-full rounded-full transition-all duration-500 ease-out", progressBarColor(system.CPUPercent) }
+			     style={ fmt.Sprintf("width: %.1f%%", system.CPUPercent) }
+			     data-style-width="$cpuPercent + '%'"
+			     data-class="$cpuPercent < 50 ? 'bg-gradient-to-r from-green-400 to-green-500' : $cpuPercent < 80 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' : 'bg-gradient-to-r from-red-400 to-red-500'"></div>
+		</div>
+	</div>
+	
+	<!-- Memory Usage -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3 text-purple-400">
+			<i class="fas fa-memory"></i>
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Memory Usage</div>
+		<div class="text-3xl font-bold mb-3 text-white" data-text="`${$memoryPercent}%`">{ fmt.Sprintf("%.1f%%", system.MemoryPercent) }</div>
+		<div class="w-full bg-gray-900/50 rounded-full h-3 overflow-hidden shadow-inner">
+			<div class={ "h-full rounded-full transition-all duration-500 ease-out", progressBarColor(system.MemoryPercent) }
+			     style={ fmt.Sprintf("width: %.1f%%", system.MemoryPercent) }
+			     data-style-width="$memoryPercent + '%'"
+			     data-class="$memoryPercent < 50 ? 'bg-gradient-to-r from-green-400 to-green-500' : $memoryPercent < 80 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' : 'bg-gradient-to-r from-red-400 to-red-500'"></div>
+		</div>
+	</div>
+	
+	<!-- Disk Usage -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3 text-orange-400">
+			<i class="fas fa-hard-drive"></i>
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Disk Usage</div>
+		<div class="text-3xl font-bold mb-3 text-white" data-text="`${$diskPercent}%`">{ fmt.Sprintf("%.1f%%", system.DiskPercent) }</div>
+		<div class="w-full bg-gray-900/50 rounded-full h-3 overflow-hidden shadow-inner">
+			<div class={ "h-full rounded-full transition-all duration-500 ease-out", progressBarColor(system.DiskPercent) }
+			     style={ fmt.Sprintf("width: %.1f%%", system.DiskPercent) }
+			     data-style-width="$diskPercent + '%'"
+			     data-class="$diskPercent < 50 ? 'bg-gradient-to-r from-green-400 to-green-500' : $diskPercent < 80 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' : 'bg-gradient-to-r from-red-400 to-red-500'"></div>
+		</div>
+	</div>
+	
+	<!-- System Uptime -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3 text-green-400">
+			<i class="fas fa-clock"></i>
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">System Uptime</div>
+		<div class="text-2xl font-bold text-white" data-text="$uptime">{ system.Uptime }</div>
+	</div>
+	
+	<!-- Network In -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3 text-cyan-400">
+			<i class="fas fa-download"></i>
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Network In</div>
+		<div class="text-2xl font-bold text-white" data-text="`${$networkIn}/s`">{ formatBytes(system.NetworkIn) }/s</div>
+	</div>
+	
+	<!-- Network Out -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3 text-pink-400">
+			<i class="fas fa-upload"></i>
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Network Out</div>
+		<div class="text-2xl font-bold text-white" data-text="`${$networkOut}/s`">{ formatBytes(system.NetworkOut) }/s</div>
+	</div>
+}
+
+templ ServicesCards(services []types.ServiceStatus) {
+	for _, service := range services {
+		<div class="bg-gradient-to-br from-gray-800/80 to-gray-700/80 backdrop-blur-sm rounded-xl p-6 relative transition-all duration-300 hover:scale-105 hover:shadow-2xl border border-gray-600/30">
+			<div class="flex items-center justify-between mb-4">
+				<div class="flex items-center">
+					<i class="fas fa-cube text-2xl mr-3 text-indigo-400"></i>
+					<div class="text-lg font-semibold text-white">{ service.Name }</div>
+				</div>
+				<div class={ "w-4 h-4 rounded-full shadow-lg", statusIndicatorClass(service.Healthy) }></div>
+			</div>
+			<div class="text-gray-300 text-sm">
+				<i class="fas fa-info-circle text-gray-500 mr-2"></i>
+				Status: 
+				if service.Healthy {
+					<strong class="text-green-400">{ service.Status }</strong>
+				} else {
+					<strong class="text-red-400">{ service.Status }</strong>
+				}
+			</div>
+			if service.Details != "" {
+				<div class="text-gray-400 text-sm mt-2">
+					<i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
+					{ service.Details }
+				</div>
+			}
+			if service.Uptime != "" {
+				<div class="text-green-400 text-sm mt-3 font-medium">
+					<i class="fas fa-check-circle mr-2"></i>
+					Uptime: { service.Uptime }
+				</div>
+			}
+		</div>
+	}
+}
+
+func progressBarColor(percent float64) string {
+	if percent < 50 {
+		return "bg-green-500"
+	} else if percent < 80 {
+		return "bg-yellow-500"
+	}
+	return "bg-red-500"
+}
+
+func statusIndicatorClass(healthy bool) string {
+	if healthy {
+		return "bg-green-500 glow-green"
+	}
+	return "bg-red-500 glow-red"
+}
+
+func formatBytes(bytes float64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%.0f B", bytes)
+	}
+	
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	
+	return fmt.Sprintf("%.1f %cB", bytes/float64(div), "KMGTPE"[exp])
+}
