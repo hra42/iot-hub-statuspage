@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: statuspage-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: statuspage
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: statuspage
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U statuspage"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  statuspage:
+    build: .
+    container_name: statuspage
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/haproxy/admin.sock:/var/run/haproxy/admin.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - PORT=8080
+      - HAPROXY_SOCKET=/var/run/haproxy/admin.sock
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=statuspage
+      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_DB=statuspage
+      - POSTGRES_SSLMODE=disable
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  postgres-data:
