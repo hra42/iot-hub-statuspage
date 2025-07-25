@@ -37,6 +37,12 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
+	
+	// Verify database connection
+	if err := db.Ping(); err != nil {
+		log.Fatalf("Failed to ping database: %v", err)
+	}
+	log.Println("Successfully connected to PostgreSQL database")
 
 	// Initialize HAProxy client
 	haproxyClient := haproxy.NewClient(getEnv("HAPROXY_SOCKET", "/var/run/haproxy/admin.sock"))
@@ -49,6 +55,9 @@ func main() {
 	defer cancel()
 
 	go collector.Start(ctx)
+
+	// Wait a moment for initial metrics collection
+	time.Sleep(2 * time.Second)
 
 	// Initialize web server
 	server := web.NewServer(db, haproxyClient, collector)

@@ -45,6 +45,7 @@ type SystemStatus struct {
 	NetworkIn     float64 `json:"network_in"`
 	NetworkOut    float64 `json:"network_out"`
 	Uptime        string  `json:"uptime"`
+	DatabaseSize  int64   `json:"database_size"`
 }
 
 func NewServer(db *storage.DB, haproxy *haproxy.Client, collector *metrics.Collector) *Server {
@@ -99,6 +100,7 @@ func (s *Server) handleDashboard(c *gin.Context) {
 			NetworkIn:     status.System.NetworkIn,
 			NetworkOut:    status.System.NetworkOut,
 			Uptime:        status.System.Uptime,
+			DatabaseSize:  status.System.DatabaseSize,
 		},
 		LastUpdated: status.LastUpdated,
 	}
@@ -181,7 +183,16 @@ func (s *Server) handleSSE(c *gin.Context) {
 				"networkIn":     formatBytes(status.System.NetworkIn),
 				"networkOut":    formatBytes(status.System.NetworkOut),
 				"uptime":        status.System.Uptime,
+				"databaseSize":  formatBytes(float64(status.System.DatabaseSize)),
 				"lastUpdated":   time.Now().Format("2006-01-02 15:04:05"),
+			}
+			
+			// Add service signals
+			for i, service := range status.Services {
+				signals[fmt.Sprintf("service%d_status", i)] = service.Status
+				signals[fmt.Sprintf("service%d_healthy", i)] = service.Healthy
+				signals[fmt.Sprintf("service%d_details", i)] = service.Details
+				signals[fmt.Sprintf("service%d_uptime", i)] = service.Uptime
 			}
 			
 			event := Event{
@@ -231,8 +242,6 @@ func (s *Server) handleSSE(c *gin.Context) {
 					}
 				}
 				fmt.Fprintf(w, "\n")
-				
-				log.Printf("Sent SSE update: %s", data)
 				
 				if flusher, ok := w.(http.Flusher); ok {
 					flusher.Flush()
@@ -317,11 +326,8 @@ func (s *Server) getCurrentStatus() (*StatusResponse, error) {
 		NetworkIn:     systemMetrics.NetworkIn,
 		NetworkOut:    systemMetrics.NetworkOut,
 		Uptime:        formatDuration(systemMetrics.Uptime),
+		DatabaseSize:  systemMetrics.DatabaseSize,
 	}
-	
-	log.Printf("System metrics - CPU: %.2f%%, Memory: %.2f%%, Disk: %.2f%%, Network In: %.2f, Network Out: %.2f, Uptime: %s",
-		systemStatus.CPUPercent, systemStatus.MemoryPercent, systemStatus.DiskPercent, 
-		systemStatus.NetworkIn, systemStatus.NetworkOut, systemStatus.Uptime)
 	
 	return &StatusResponse{
 		Services: services,
@@ -348,7 +354,16 @@ func (s *Server) broadcastUpdates() {
 			"networkIn":     formatBytes(status.System.NetworkIn),
 			"networkOut":    formatBytes(status.System.NetworkOut),
 			"uptime":        status.System.Uptime,
+			"databaseSize":  formatBytes(float64(status.System.DatabaseSize)),
 			"lastUpdated":   time.Now().Format("2006-01-02 15:04:05"),
+		}
+		
+		// Add service signals
+		for i, service := range status.Services {
+			signals[fmt.Sprintf("service%d_status", i)] = service.Status
+			signals[fmt.Sprintf("service%d_healthy", i)] = service.Healthy
+			signals[fmt.Sprintf("service%d_details", i)] = service.Details
+			signals[fmt.Sprintf("service%d_uptime", i)] = service.Uptime
 		}
 
 		event := Event{

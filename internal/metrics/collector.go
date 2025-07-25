@@ -67,21 +67,36 @@ func (c *Collector) collect() {
 	// Collect system metrics
 	metrics := types.SystemMetrics{}
 
+	// Prepare slices for bulk insert
+	var systemMetrics []storage.SystemMetric
+	var serviceStatuses []storage.ServiceStatus
+
 	// CPU usage
 	cpuPercent, err := cpu.Percent(time.Second, false)
 	if err == nil && len(cpuPercent) > 0 {
 		metrics.CPUPercent = cpuPercent[0]
-		c.db.InsertSystemMetric("cpu", metrics.CPUPercent)
+		systemMetrics = append(systemMetrics, storage.SystemMetric{
+			MetricType: "cpu",
+			Value:      metrics.CPUPercent,
+		})
 	}
 
 	// Memory usage
 	vmStat, err := mem.VirtualMemory()
 	if err == nil {
 		metrics.MemoryPercent = vmStat.UsedPercent
-		c.db.InsertSystemMetric("memory", metrics.MemoryPercent)
-		c.db.InsertSystemMetric("memory_used", float64(vmStat.Used))
-		c.db.InsertSystemMetric("memory_total", float64(vmStat.Total))
-		log.Printf("Memory: %.2f%% (Used: %d, Total: %d)", vmStat.UsedPercent, vmStat.Used, vmStat.Total)
+		systemMetrics = append(systemMetrics, storage.SystemMetric{
+			MetricType: "memory",
+			Value:      metrics.MemoryPercent,
+		})
+		systemMetrics = append(systemMetrics, storage.SystemMetric{
+			MetricType: "memory_used",
+			Value:      float64(vmStat.Used),
+		})
+		systemMetrics = append(systemMetrics, storage.SystemMetric{
+			MetricType: "memory_total",
+			Value:      float64(vmStat.Total),
+		})
 	} else {
 		log.Printf("Error getting memory stats: %v", err)
 	}
@@ -90,9 +105,18 @@ func (c *Collector) collect() {
 	diskStat, err := disk.Usage("/")
 	if err == nil {
 		metrics.DiskPercent = diskStat.UsedPercent
-		c.db.InsertSystemMetric("disk", metrics.DiskPercent)
-		c.db.InsertSystemMetric("disk_used", float64(diskStat.Used))
-		c.db.InsertSystemMetric("disk_total", float64(diskStat.Total))
+		systemMetrics = append(systemMetrics, storage.SystemMetric{
+			MetricType: "disk",
+			Value:      metrics.DiskPercent,
+		})
+		systemMetrics = append(systemMetrics, storage.SystemMetric{
+			MetricType: "disk_used",
+			Value:      float64(diskStat.Used),
+		})
+		systemMetrics = append(systemMetrics, storage.SystemMetric{
+			MetricType: "disk_total",
+			Value:      float64(diskStat.Total),
+		})
 	}
 
 	// Network stats - calculate rate (bytes per second)
@@ -126,14 +150,32 @@ func (c *Collector) collect() {
 		c.lastNetworkIn = currentNetworkIn
 		c.lastNetworkOut = currentNetworkOut
 		
-		c.db.InsertSystemMetric("network_in_rate", metrics.NetworkIn)
-		c.db.InsertSystemMetric("network_out_rate", metrics.NetworkOut)
+		systemMetrics = append(systemMetrics, storage.SystemMetric{
+			MetricType: "network_in_rate",
+			Value:      metrics.NetworkIn,
+		})
+		systemMetrics = append(systemMetrics, storage.SystemMetric{
+			MetricType: "network_out_rate",
+			Value:      metrics.NetworkOut,
+		})
 	}
 
 	// System uptime
 	uptimeInfo, err := host.Uptime()
 	if err == nil {
 		metrics.Uptime = time.Duration(uptimeInfo) * time.Second
+	}
+
+	// Database size
+	dbSize, err := c.db.GetDatabaseSize()
+	if err == nil {
+		metrics.DatabaseSize = dbSize
+		systemMetrics = append(systemMetrics, storage.SystemMetric{
+			MetricType: "database_size",
+			Value:      float64(dbSize),
+		})
+	} else {
+		log.Printf("Error getting database size: %v", err)
 	}
 
 	// Update current metrics and last collect time
@@ -149,17 +191,26 @@ func (c *Collector) collect() {
 			if !backend.Active {
 				status = "DOWN"
 			}
-			c.db.InsertServiceStatus(fmt.Sprintf("haproxy_%s", backend.Name), status, "")
+			serviceStatuses = append(serviceStatuses, storage.ServiceStatus{
+				Service: fmt.Sprintf("haproxy_%s", backend.Name),
+				Status:  status,
+				Details: "",
+			})
 		}
 	}
 
 	// Collect Docker container stats
 	if c.dockerClient != nil {
-		c.collectDockerStats()
+		c.collectDockerStats(&serviceStatuses)
+	}
+
+	// Perform bulk insert in a single transaction
+	if err := c.db.BulkInsert(systemMetrics, serviceStatuses); err != nil {
+		log.Printf("Failed to perform bulk insert: %v", err)
 	}
 }
 
-func (c *Collector) collectDockerStats() {
+func (c *Collector) collectDockerStats(serviceStatuses *[]storage.ServiceStatus) {
 	containers, err := c.dockerClient.ContainerList(context.Background(), dockercontainer.ListOptions{All: true})
 	if err != nil {
 		log.Printf("Failed to list containers: %v", err)
@@ -184,8 +235,11 @@ func (c *Collector) collectDockerStats() {
 		inspect, err := c.dockerClient.ContainerInspect(context.Background(), container.ID)
 		if err == nil {
 			if inspect.State.Health != nil {
-				status.Details = inspect.State.Health.Status
 				status.Healthy = inspect.State.Health.Status == "healthy"
+				// Only set details if there's an actual issue
+				if inspect.State.Health.Status != "healthy" {
+					status.Details = inspect.State.Health.Status
+				}
 			}
 			
 			if inspect.State.StartedAt != "" {
@@ -197,12 +251,16 @@ func (c *Collector) collectDockerStats() {
 
 		dockerStatus = append(dockerStatus, status)
 		
-		// Store in database
+		// Add to bulk insert
 		healthStatus := "UP"
 		if !status.Healthy {
 			healthStatus = "DOWN"
 		}
-		c.db.InsertServiceStatus(fmt.Sprintf("docker_%s", name), healthStatus, status.Details)
+		*serviceStatuses = append(*serviceStatuses, storage.ServiceStatus{
+			Service: fmt.Sprintf("docker_%s", name),
+			Status:  healthStatus,
+			Details: status.Details,
+		})
 	}
 
 	c.mu.Lock()

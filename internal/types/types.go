@@ -18,4 +18,5 @@ type SystemMetrics struct {
 	NetworkIn     float64
 	NetworkOut    float64
 	Uptime        time.Duration
+	DatabaseSize  int64
 }

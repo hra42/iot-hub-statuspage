@@ -82,15 +82,58 @@ func (db *DB) createTables() error {
 }
 
 func (db *DB) InsertServiceStatus(service, status, details string) error {
-	query := `INSERT INTO service_status (service, status, details) VALUES (?, ?, ?)`
+	query := `INSERT INTO service_status (service, status, details) VALUES ($1, $2, $3)`
 	_, err := db.conn.Exec(query, service, status, details)
 	return err
 }
 
 func (db *DB) InsertSystemMetric(metricType string, value float64) error {
-	query := `INSERT INTO system_metrics (metric_type, value) VALUES (?, ?)`
+	query := `INSERT INTO system_metrics (metric_type, value) VALUES ($1, $2)`
 	_, err := db.conn.Exec(query, metricType, value)
 	return err
+}
+
+// BulkInsert performs bulk inserts for both system metrics and service statuses in a single transaction
+func (db *DB) BulkInsert(metrics []SystemMetric, statuses []ServiceStatus) error {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Prepare statements for bulk inserts
+	metricStmt, err := tx.Prepare(`INSERT INTO system_metrics (metric_type, value) VALUES ($1, $2)`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare metric statement: %w", err)
+	}
+	defer metricStmt.Close()
+
+	statusStmt, err := tx.Prepare(`INSERT INTO service_status (service, status, details) VALUES ($1, $2, $3)`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare status statement: %w", err)
+	}
+	defer statusStmt.Close()
+
+	// Insert all metrics
+	for _, metric := range metrics {
+		if _, err := metricStmt.Exec(metric.MetricType, metric.Value); err != nil {
+			return fmt.Errorf("failed to insert metric: %w", err)
+		}
+	}
+
+	// Insert all statuses
+	for _, status := range statuses {
+		if _, err := statusStmt.Exec(status.Service, status.Status, status.Details); err != nil {
+			return fmt.Errorf("failed to insert status: %w", err)
+		}
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (db *DB) GetServiceStatusHistory(service string, duration time.Duration) ([]ServiceStatus, error) {
@@ -98,7 +141,7 @@ func (db *DB) GetServiceStatusHistory(service string, duration time.Duration) ([
 	query := `
 		SELECT id, service, status, timestamp, details 
 		FROM service_status 
-		WHERE service = ? AND timestamp >= ? 
+		WHERE service = $1 AND timestamp >= $2 
 		ORDER BY timestamp DESC
 	`
 	
@@ -125,7 +168,7 @@ func (db *DB) GetSystemMetricsHistory(metricType string, duration time.Duration)
 	query := `
 		SELECT id, metric_type, value, timestamp 
 		FROM system_metrics 
-		WHERE metric_type = ? AND timestamp >= ? 
+		WHERE metric_type = $1 AND timestamp >= $2 
 		ORDER BY timestamp ASC
 	`
 	
@@ -186,8 +229,8 @@ func (db *DB) cleanupOldData() {
 		cutoff := time.Now().Add(-retention)
 
 		queries := []string{
-			`DELETE FROM service_status WHERE timestamp < ?`,
-			`DELETE FROM system_metrics WHERE timestamp < ?`,
+			`DELETE FROM service_status WHERE timestamp < $1`,
+			`DELETE FROM system_metrics WHERE timestamp < $1`,
 		}
 
 		for _, query := range queries {
@@ -201,6 +244,19 @@ func (db *DB) cleanupOldData() {
 
 func (db *DB) Ping() error {
 	return db.conn.Ping()
+}
+
+func (db *DB) GetDatabaseSize() (int64, error) {
+	var sizeBytes int64
+	
+	query := `SELECT pg_database_size(current_database())`
+	
+	err := db.conn.QueryRow(query).Scan(&sizeBytes)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database size: %w", err)
+	}
+	
+	return sizeBytes, nil
 }
 
 func (db *DB) Close() error {

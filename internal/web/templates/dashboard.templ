@@ -19,6 +19,7 @@ type SystemStatus struct {
 	NetworkIn     float64
 	NetworkOut    float64
 	Uptime        string
+	DatabaseSize  int64
 }
 
 templ Dashboard(data DashboardData) {
@@ -31,6 +32,12 @@ templ Dashboard(data DashboardData) {
 			<script src="https://cdn.tailwindcss.com"></script>
 			<script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@main/bundles/datastar.js"></script>
 			<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+			<script>
+				// Refresh the page every 60 seconds to update service information
+				setTimeout(function() {
+					location.reload();
+				}, 60000);
+			</script>
 			<style>
 				@keyframes pulse-glow {
 					0%, 100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.5); }
@@ -45,15 +52,7 @@ templ Dashboard(data DashboardData) {
 			</style>
 		</head>
 		<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 min-h-screen text-gray-100">
-			<div data-signals={templ.JSONString(map[string]interface{}{
-				"cpuPercent": fmt.Sprintf("%.1f", data.System.CPUPercent),
-				"memoryPercent": fmt.Sprintf("%.1f", data.System.MemoryPercent),
-				"diskPercent": fmt.Sprintf("%.1f", data.System.DiskPercent),
-				"networkIn": formatBytes(data.System.NetworkIn),
-				"networkOut": formatBytes(data.System.NetworkOut),
-				"uptime": data.System.Uptime,
-				"lastUpdated": data.LastUpdated.Format("2006-01-02 15:04:05"),
-			})} data-on-load="@get('/events')">
+			<div data-signals={templ.JSONString(buildSignals(data))} data-on-load="@get('/events')">
 				<div class="container mx-auto px-4 py-8 max-w-7xl">
 				<h1 class="text-5xl font-thin text-center mb-12 text-white">
 					<i class="fas fa-home text-blue-400 mr-4"></i>Smart Home Status
@@ -64,7 +63,7 @@ templ Dashboard(data DashboardData) {
 					<h2 class="text-2xl font-light mb-6 text-gray-300">
 						<i class="fas fa-chart-line text-green-400 mr-3"></i>System Metrics
 					</h2>
-					<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+					<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 						@SystemStatsCards(data.System)
 					</div>
 				</div>
@@ -163,37 +162,47 @@ templ SystemStatsCards(system SystemStatus) {
 		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Network Out</div>
 		<div class="text-2xl font-bold text-white" data-text="`${$networkOut}/s`">{ formatBytes(system.NetworkOut) }/s</div>
 	</div>
+	
+	<!-- Database Size -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3 text-indigo-400">
+			<i class="fas fa-database"></i>
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Database Size</div>
+		<div class="text-2xl font-bold text-white" data-text="$databaseSize">{ formatBytes(float64(system.DatabaseSize)) }</div>
+	</div>
 }
 
 templ ServicesCards(services []types.ServiceStatus) {
-	for _, service := range services {
+	for i, service := range services {
 		<div class="bg-gradient-to-br from-gray-800/80 to-gray-700/80 backdrop-blur-sm rounded-xl p-6 relative transition-all duration-300 hover:scale-105 hover:shadow-2xl border border-gray-600/30">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center">
 					<i class="fas fa-cube text-2xl mr-3 text-indigo-400"></i>
 					<div class="text-lg font-semibold text-white">{ service.Name }</div>
 				</div>
-				<div class={ "w-4 h-4 rounded-full shadow-lg", statusIndicatorClass(service.Healthy) }></div>
+				<div class={ "w-4 h-4 rounded-full shadow-lg", statusIndicatorClass(service.Healthy) }
+				     data-class={ fmt.Sprintf("$service%d_healthy ? 'bg-green-500 glow-green' : 'bg-red-500 glow-red'", i) }></div>
 			</div>
 			<div class="text-gray-300 text-sm">
 				<i class="fas fa-info-circle text-gray-500 mr-2"></i>
 				Status: 
 				if service.Healthy {
-					<strong class="text-green-400">{ service.Status }</strong>
+					<strong class="text-green-400" data-text={ fmt.Sprintf("$service%d_status", i) }>{ service.Status }</strong>
 				} else {
-					<strong class="text-red-400">{ service.Status }</strong>
+					<strong class="text-red-400" data-text={ fmt.Sprintf("$service%d_status", i) }>{ service.Status }</strong>
 				}
 			</div>
 			if service.Details != "" {
-				<div class="text-gray-400 text-sm mt-2">
+				<div class="text-gray-400 text-sm mt-2" data-if={ fmt.Sprintf("$service%d_details", i) }>
 					<i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
-					{ service.Details }
+					<span data-text={ fmt.Sprintf("$service%d_details", i) }>{ service.Details }</span>
 				</div>
 			}
 			if service.Uptime != "" {
-				<div class="text-green-400 text-sm mt-3 font-medium">
+				<div class="text-green-400 text-sm mt-3 font-medium" data-if={ fmt.Sprintf("$service%d_uptime", i) }>
 					<i class="fas fa-check-circle mr-2"></i>
-					Uptime: { service.Uptime }
+					Uptime: <span data-text={ fmt.Sprintf("$service%d_uptime", i) }>{ service.Uptime }</span>
 				</div>
 			}
 		</div>
@@ -229,4 +238,27 @@ func formatBytes(bytes float64) string {
 	}
 	
 	return fmt.Sprintf("%.1f %cB", bytes/float64(div), "KMGTPE"[exp])
+}
+
+func buildSignals(data DashboardData) map[string]interface{} {
+	signals := map[string]interface{}{
+		"cpuPercent": fmt.Sprintf("%.1f", data.System.CPUPercent),
+		"memoryPercent": fmt.Sprintf("%.1f", data.System.MemoryPercent),
+		"diskPercent": fmt.Sprintf("%.1f", data.System.DiskPercent),
+		"networkIn": formatBytes(data.System.NetworkIn),
+		"networkOut": formatBytes(data.System.NetworkOut),
+		"uptime": data.System.Uptime,
+		"databaseSize": formatBytes(float64(data.System.DatabaseSize)),
+		"lastUpdated": data.LastUpdated.Format("2006-01-02 15:04:05"),
+	}
+	
+	// Add service signals
+	for i, service := range data.Services {
+		signals[fmt.Sprintf("service%d_status", i)] = service.Status
+		signals[fmt.Sprintf("service%d_healthy", i)] = service.Healthy
+		signals[fmt.Sprintf("service%d_details", i)] = service.Details
+		signals[fmt.Sprintf("service%d_uptime", i)] = service.Uptime
+	}
+	
+	return signals
 }
