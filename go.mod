@@ -3,7 +3,7 @@ module github.com/hra42/iot-hub-statuspage
 go 1.24
 
 require (
-	github.com/a-h/templ v0.3.906
+	github.com/a-h/templ v0.3.920
 	github.com/docker/docker v28.3.2+incompatible
 	github.com/gin-gonic/gin v1.10.1
 	github.com/lib/pq v1.10.9

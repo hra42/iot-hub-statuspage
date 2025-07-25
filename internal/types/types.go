@@ -12,11 +12,20 @@ type ServiceStatus struct {
 }
 
 type SystemMetrics struct {
-	CPUPercent    float64
-	MemoryPercent float64
-	DiskPercent   float64
-	NetworkIn     float64
-	NetworkOut    float64
-	Uptime        time.Duration
-	DatabaseSize  int64
+	CPUPercent       float64
+	MemoryPercent    float64
+	MemoryUsed       uint64
+	MemoryTotal      uint64
+	DiskPercent      float64
+	DiskUsed         uint64
+	DiskTotal        uint64
+	NetworkIn        float64
+	NetworkOut       float64
+	Uptime           time.Duration
+	DatabaseSize     int64
+	DatabaseConnected bool
+	HAProxyConnected bool
+	DockerConnected  bool
+	Pi5Connected     bool
+	Pi52Connected    bool
 }

@@ -13,13 +13,22 @@ type DashboardData struct {
 }
 
 type SystemStatus struct {
-	CPUPercent    float64
-	MemoryPercent float64
-	DiskPercent   float64
-	NetworkIn     float64
-	NetworkOut    float64
-	Uptime        string
-	DatabaseSize  int64
+	CPUPercent       float64
+	MemoryPercent    float64
+	MemoryUsed       uint64
+	MemoryTotal      uint64
+	DiskPercent      float64
+	DiskUsed         uint64
+	DiskTotal        uint64
+	NetworkIn        float64
+	NetworkOut       float64
+	Uptime           string
+	DatabaseSize     int64
+	DatabaseConnected bool
+	HAProxyConnected bool
+	DockerConnected  bool
+	Pi5Connected     bool
+	Pi52Connected    bool
 }
 
 templ Dashboard(data DashboardData) {
@@ -52,6 +61,16 @@ templ Dashboard(data DashboardData) {
 				<h1 class="text-5xl font-thin text-center mb-12 text-white">
 					<i class="fas fa-home text-blue-400 mr-4"></i>Smart Home Status
 				</h1>
+				
+				<!-- Connections -->
+				<div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 mb-10 shadow-2xl border border-gray-700/50" id="connections">
+					<h2 class="text-2xl font-light mb-6 text-gray-300">
+						<i class="fas fa-link text-purple-400 mr-3"></i>Connections
+					</h2>
+					<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+						@ConnectionCards(data.System)
+					</div>
+				</div>
 				
 				<!-- System Stats -->
 				<div class="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 mb-10 shadow-2xl border border-gray-700/50" id="system-stats">
@@ -107,7 +126,10 @@ templ SystemStatsCards(system SystemStatus) {
 			<i class="fas fa-memory"></i>
 		</div>
 		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Memory Usage</div>
-		<div class="text-3xl font-bold mb-3 text-white" data-text="`${$memoryPercent}%`">{ fmt.Sprintf("%.1f%%", system.MemoryPercent) }</div>
+		<div class="text-3xl font-bold mb-1 text-white" data-text="`${$memoryPercent}%`">{ fmt.Sprintf("%.1f%%", system.MemoryPercent) }</div>
+		<div class="text-sm text-gray-400 mb-2" data-text="`${$memoryUsed} / ${$memoryTotal}`">
+			{ formatBytesUint64(system.MemoryUsed) } / { formatBytesUint64(system.MemoryTotal) }
+		</div>
 		<div class="w-full bg-gray-900/50 rounded-full h-3 overflow-hidden shadow-inner">
 			<div class={ "h-full rounded-full transition-all duration-500 ease-out", progressBarColor(system.MemoryPercent) }
 			     style={ fmt.Sprintf("width: %.1f%%", system.MemoryPercent) }
@@ -122,7 +144,10 @@ templ SystemStatsCards(system SystemStatus) {
 			<i class="fas fa-hard-drive"></i>
 		</div>
 		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Disk Usage</div>
-		<div class="text-3xl font-bold mb-3 text-white" data-text="`${$diskPercent}%`">{ fmt.Sprintf("%.1f%%", system.DiskPercent) }</div>
+		<div class="text-3xl font-bold mb-1 text-white" data-text="`${$diskPercent}%`">{ fmt.Sprintf("%.1f%%", system.DiskPercent) }</div>
+		<div class="text-sm text-gray-400 mb-2" data-text="`${$diskUsed} / ${$diskTotal}`">
+			{ formatBytesUint64(system.DiskUsed) } / { formatBytesUint64(system.DiskTotal) }
+		</div>
 		<div class="w-full bg-gray-900/50 rounded-full h-3 overflow-hidden shadow-inner">
 			<div class={ "h-full rounded-full transition-all duration-500 ease-out", progressBarColor(system.DiskPercent) }
 			     style={ fmt.Sprintf("width: %.1f%%", system.DiskPercent) }
@@ -165,6 +190,103 @@ templ SystemStatsCards(system SystemStatus) {
 		</div>
 		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Database Size</div>
 		<div class="text-2xl font-bold text-white" data-text="$databaseSize">{ formatBytes(float64(system.DatabaseSize)) }</div>
+	</div>
+}
+
+templ ConnectionCards(system SystemStatus) {
+	<!-- Database Connection -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3">
+			if system.DatabaseConnected {
+				<i class="fas fa-database text-blue-500"></i>
+			} else {
+				<i class="fas fa-database text-gray-500"></i>
+			}
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">PostgreSQL</div>
+		<div class="text-2xl font-bold" data-class="$databaseConnected ? 'text-green-400' : 'text-red-400'" data-text="$databaseConnected ? 'Connected' : 'Disconnected'">
+			if system.DatabaseConnected {
+				<span class="text-green-400">Connected</span>
+			} else {
+				<span class="text-red-400">Disconnected</span>
+			}
+		</div>
+	</div>
+	
+	<!-- HAProxy Connection -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3">
+			if system.HAProxyConnected {
+				<i class="fas fa-network-wired text-orange-500"></i>
+			} else {
+				<i class="fas fa-network-wired text-gray-500"></i>
+			}
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">HAProxy</div>
+		<div class="text-2xl font-bold" data-class="$haproxyConnected ? 'text-green-400' : 'text-red-400'" data-text="$haproxyConnected ? 'Connected' : 'Disconnected'">
+			if system.HAProxyConnected {
+				<span class="text-green-400">Connected</span>
+			} else {
+				<span class="text-red-400">Disconnected</span>
+			}
+		</div>
+	</div>
+	
+	<!-- Docker Connection -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3">
+			if system.DockerConnected {
+				<i class="fab fa-docker text-cyan-500"></i>
+			} else {
+				<i class="fab fa-docker text-gray-500"></i>
+			}
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Docker</div>
+		<div class="text-2xl font-bold" data-class="$dockerConnected ? 'text-green-400' : 'text-red-400'" data-text="$dockerConnected ? 'Connected' : 'Disconnected'">
+			if system.DockerConnected {
+				<span class="text-green-400">Connected</span>
+			} else {
+				<span class="text-red-400">Disconnected</span>
+			}
+		</div>
+	</div>
+	
+	<!-- Pi5 Host -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3">
+			if system.Pi5Connected {
+				<i class="fas fa-server text-purple-500"></i>
+			} else {
+				<i class="fas fa-server text-gray-500"></i>
+			}
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Pi5 (192.168.2.136)</div>
+		<div class="text-2xl font-bold" data-class="$pi5Connected ? 'text-green-400' : 'text-red-400'" data-text="$pi5Connected ? 'Reachable' : 'Unreachable'">
+			if system.Pi5Connected {
+				<span class="text-green-400">Reachable</span>
+			} else {
+				<span class="text-red-400">Unreachable</span>
+			}
+		</div>
+	</div>
+	
+	<!-- Pi5-2 Host -->
+	<div class="bg-gradient-to-br from-gray-800 to-gray-700 p-6 rounded-xl text-center shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 border border-gray-600/30">
+		<div class="text-4xl mb-3">
+			if system.Pi52Connected {
+				<i class="fas fa-server text-pink-500"></i>
+			} else {
+				<i class="fas fa-server text-gray-500"></i>
+			}
+		</div>
+		<div class="text-gray-300 text-sm mb-2 font-medium uppercase tracking-wider">Pi5-2 (192.168.2.135)</div>
+		<div class="text-2xl font-bold" data-class="$pi52Connected ? 'text-green-400' : 'text-red-400'" data-text="$pi52Connected ? 'Reachable' : 'Unreachable'">
+			if system.Pi52Connected {
+				<span class="text-green-400">Reachable</span>
+			} else {
+				<span class="text-red-400">Unreachable</span>
+			}
+		</div>
 	</div>
 }
 
@@ -235,15 +357,28 @@ func formatBytes(bytes float64) string {
 	return fmt.Sprintf("%.1f %cB", bytes/float64(div), "KMGTPE"[exp])
 }
 
+func formatBytesUint64(bytes uint64) string {
+	return formatBytes(float64(bytes))
+}
+
 func buildSignals(data DashboardData) map[string]interface{} {
 	signals := map[string]interface{}{
 		"cpuPercent": fmt.Sprintf("%.1f", data.System.CPUPercent),
 		"memoryPercent": fmt.Sprintf("%.1f", data.System.MemoryPercent),
+		"memoryUsed": formatBytesUint64(data.System.MemoryUsed),
+		"memoryTotal": formatBytesUint64(data.System.MemoryTotal),
 		"diskPercent": fmt.Sprintf("%.1f", data.System.DiskPercent),
+		"diskUsed": formatBytesUint64(data.System.DiskUsed),
+		"diskTotal": formatBytesUint64(data.System.DiskTotal),
 		"networkIn": formatBytes(data.System.NetworkIn),
 		"networkOut": formatBytes(data.System.NetworkOut),
 		"uptime": data.System.Uptime,
 		"databaseSize": formatBytes(float64(data.System.DatabaseSize)),
+		"databaseConnected": data.System.DatabaseConnected,
+		"haproxyConnected": data.System.HAProxyConnected,
+		"dockerConnected": data.System.DockerConnected,
+		"pi5Connected": data.System.Pi5Connected,
+		"pi52Connected": data.System.Pi52Connected,
 		"lastUpdated": data.LastUpdated.Format("2006-01-02 15:04:05"),
 	}
 	

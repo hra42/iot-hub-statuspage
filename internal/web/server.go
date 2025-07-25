@@ -39,13 +39,22 @@ type StatusResponse struct {
 }
 
 type SystemStatus struct {
-	CPUPercent    float64 `json:"cpu_percent"`
-	MemoryPercent float64 `json:"memory_percent"`
-	DiskPercent   float64 `json:"disk_percent"`
-	NetworkIn     float64 `json:"network_in"`
-	NetworkOut    float64 `json:"network_out"`
-	Uptime        string  `json:"uptime"`
-	DatabaseSize  int64   `json:"database_size"`
+	CPUPercent       float64 `json:"cpu_percent"`
+	MemoryPercent    float64 `json:"memory_percent"`
+	MemoryUsed       uint64  `json:"memory_used"`
+	MemoryTotal      uint64  `json:"memory_total"`
+	DiskPercent      float64 `json:"disk_percent"`
+	DiskUsed         uint64  `json:"disk_used"`
+	DiskTotal        uint64  `json:"disk_total"`
+	NetworkIn        float64 `json:"network_in"`
+	NetworkOut       float64 `json:"network_out"`
+	Uptime           string  `json:"uptime"`
+	DatabaseSize     int64   `json:"database_size"`
+	DatabaseConnected bool    `json:"database_connected"`
+	HAProxyConnected bool    `json:"haproxy_connected"`
+	DockerConnected  bool    `json:"docker_connected"`
+	Pi5Connected     bool    `json:"pi5_connected"`
+	Pi52Connected    bool    `json:"pi52_connected"`
 }
 
 func NewServer(db *storage.DB, haproxy *haproxy.Client, collector *metrics.Collector) *Server {
@@ -94,13 +103,22 @@ func (s *Server) handleDashboard(c *gin.Context) {
 	dashboardData := templates.DashboardData{
 		Services: status.Services,
 		System: templates.SystemStatus{
-			CPUPercent:    status.System.CPUPercent,
-			MemoryPercent: status.System.MemoryPercent,
-			DiskPercent:   status.System.DiskPercent,
-			NetworkIn:     status.System.NetworkIn,
-			NetworkOut:    status.System.NetworkOut,
-			Uptime:        status.System.Uptime,
-			DatabaseSize:  status.System.DatabaseSize,
+			CPUPercent:       status.System.CPUPercent,
+			MemoryPercent:    status.System.MemoryPercent,
+			MemoryUsed:       status.System.MemoryUsed,
+			MemoryTotal:      status.System.MemoryTotal,
+			DiskPercent:      status.System.DiskPercent,
+			DiskUsed:         status.System.DiskUsed,
+			DiskTotal:        status.System.DiskTotal,
+			NetworkIn:        status.System.NetworkIn,
+			NetworkOut:       status.System.NetworkOut,
+			Uptime:           status.System.Uptime,
+			DatabaseSize:     status.System.DatabaseSize,
+			DatabaseConnected: status.System.DatabaseConnected,
+			HAProxyConnected: status.System.HAProxyConnected,
+			DockerConnected:  status.System.DockerConnected,
+			Pi5Connected:     status.System.Pi5Connected,
+			Pi52Connected:    status.System.Pi52Connected,
 		},
 		LastUpdated: status.LastUpdated,
 	}
@@ -177,14 +195,23 @@ func (s *Server) handleSSE(c *gin.Context) {
 		status, err := s.getCurrentStatus()
 		if err == nil {
 			signals := map[string]interface{}{
-				"cpuPercent":    fmt.Sprintf("%.1f", status.System.CPUPercent),
-				"memoryPercent": fmt.Sprintf("%.1f", status.System.MemoryPercent),
-				"diskPercent":   fmt.Sprintf("%.1f", status.System.DiskPercent),
-				"networkIn":     formatBytes(status.System.NetworkIn),
-				"networkOut":    formatBytes(status.System.NetworkOut),
-				"uptime":        status.System.Uptime,
-				"databaseSize":  formatBytes(float64(status.System.DatabaseSize)),
-				"lastUpdated":   time.Now().Format("2006-01-02 15:04:05"),
+				"cpuPercent":       fmt.Sprintf("%.1f", status.System.CPUPercent),
+				"memoryPercent":    fmt.Sprintf("%.1f", status.System.MemoryPercent),
+				"memoryUsed":       formatBytes(float64(status.System.MemoryUsed)),
+				"memoryTotal":      formatBytes(float64(status.System.MemoryTotal)),
+				"diskPercent":      fmt.Sprintf("%.1f", status.System.DiskPercent),
+				"diskUsed":         formatBytes(float64(status.System.DiskUsed)),
+				"diskTotal":        formatBytes(float64(status.System.DiskTotal)),
+				"networkIn":        formatBytes(status.System.NetworkIn),
+				"networkOut":       formatBytes(status.System.NetworkOut),
+				"uptime":           status.System.Uptime,
+				"databaseSize":     formatBytes(float64(status.System.DatabaseSize)),
+				"databaseConnected": status.System.DatabaseConnected,
+				"haproxyConnected": status.System.HAProxyConnected,
+				"dockerConnected":  status.System.DockerConnected,
+				"pi5Connected":     status.System.Pi5Connected,
+				"pi52Connected":    status.System.Pi52Connected,
+				"lastUpdated":      time.Now().Format("2006-01-02 15:04:05"),
 			}
 			
 			// Add service signals
@@ -320,13 +347,22 @@ func (s *Server) getCurrentStatus() (*StatusResponse, error) {
 	services = append(services, dockerServices...)
 
 	systemStatus := SystemStatus{
-		CPUPercent:    systemMetrics.CPUPercent,
-		MemoryPercent: systemMetrics.MemoryPercent,
-		DiskPercent:   systemMetrics.DiskPercent,
-		NetworkIn:     systemMetrics.NetworkIn,
-		NetworkOut:    systemMetrics.NetworkOut,
-		Uptime:        formatDuration(systemMetrics.Uptime),
-		DatabaseSize:  systemMetrics.DatabaseSize,
+		CPUPercent:       systemMetrics.CPUPercent,
+		MemoryPercent:    systemMetrics.MemoryPercent,
+		MemoryUsed:       systemMetrics.MemoryUsed,
+		MemoryTotal:      systemMetrics.MemoryTotal,
+		DiskPercent:      systemMetrics.DiskPercent,
+		DiskUsed:         systemMetrics.DiskUsed,
+		DiskTotal:        systemMetrics.DiskTotal,
+		NetworkIn:        systemMetrics.NetworkIn,
+		NetworkOut:       systemMetrics.NetworkOut,
+		Uptime:           formatDuration(systemMetrics.Uptime),
+		DatabaseSize:     systemMetrics.DatabaseSize,
+		DatabaseConnected: systemMetrics.DatabaseConnected,
+		HAProxyConnected: systemMetrics.HAProxyConnected,
+		DockerConnected:  systemMetrics.DockerConnected,
+		Pi5Connected:     systemMetrics.Pi5Connected,
+		Pi52Connected:    systemMetrics.Pi52Connected,
 	}
 	
 	return &StatusResponse{
@@ -348,14 +384,23 @@ func (s *Server) broadcastUpdates() {
 
 		// Create signals update for Datastar
 		signals := map[string]interface{}{
-			"cpuPercent":    fmt.Sprintf("%.1f", status.System.CPUPercent),
-			"memoryPercent": fmt.Sprintf("%.1f", status.System.MemoryPercent),
-			"diskPercent":   fmt.Sprintf("%.1f", status.System.DiskPercent),
-			"networkIn":     formatBytes(status.System.NetworkIn),
-			"networkOut":    formatBytes(status.System.NetworkOut),
-			"uptime":        status.System.Uptime,
-			"databaseSize":  formatBytes(float64(status.System.DatabaseSize)),
-			"lastUpdated":   time.Now().Format("2006-01-02 15:04:05"),
+			"cpuPercent":       fmt.Sprintf("%.1f", status.System.CPUPercent),
+			"memoryPercent":    fmt.Sprintf("%.1f", status.System.MemoryPercent),
+			"memoryUsed":       formatBytes(float64(status.System.MemoryUsed)),
+			"memoryTotal":      formatBytes(float64(status.System.MemoryTotal)),
+			"diskPercent":      fmt.Sprintf("%.1f", status.System.DiskPercent),
+			"diskUsed":         formatBytes(float64(status.System.DiskUsed)),
+			"diskTotal":        formatBytes(float64(status.System.DiskTotal)),
+			"networkIn":        formatBytes(status.System.NetworkIn),
+			"networkOut":       formatBytes(status.System.NetworkOut),
+			"uptime":           status.System.Uptime,
+			"databaseSize":     formatBytes(float64(status.System.DatabaseSize)),
+			"databaseConnected": status.System.DatabaseConnected,
+			"haproxyConnected": status.System.HAProxyConnected,
+			"dockerConnected":  status.System.DockerConnected,
+			"pi5Connected":     status.System.Pi5Connected,
+			"pi52Connected":    status.System.Pi52Connected,
+			"lastUpdated":      time.Now().Format("2006-01-02 15:04:05"),
 		}
 		
 		// Add service signals

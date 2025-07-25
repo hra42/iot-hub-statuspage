@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -85,6 +86,8 @@ func (c *Collector) collect() {
 	vmStat, err := mem.VirtualMemory()
 	if err == nil {
 		metrics.MemoryPercent = vmStat.UsedPercent
+		metrics.MemoryUsed = vmStat.Used
+		metrics.MemoryTotal = vmStat.Total
 		systemMetrics = append(systemMetrics, storage.SystemMetric{
 			MetricType: "memory",
 			Value:      metrics.MemoryPercent,
@@ -105,6 +108,8 @@ func (c *Collector) collect() {
 	diskStat, err := disk.Usage("/")
 	if err == nil {
 		metrics.DiskPercent = diskStat.UsedPercent
+		metrics.DiskUsed = diskStat.Used
+		metrics.DiskTotal = diskStat.Total
 		systemMetrics = append(systemMetrics, storage.SystemMetric{
 			MetricType: "disk",
 			Value:      metrics.DiskPercent,
@@ -166,26 +171,27 @@ func (c *Collector) collect() {
 		metrics.Uptime = time.Duration(uptimeInfo) * time.Second
 	}
 
-	// Database size
+	// Database size and connection check
 	dbSize, err := c.db.GetDatabaseSize()
 	if err == nil {
 		metrics.DatabaseSize = dbSize
+		metrics.DatabaseConnected = true
 		systemMetrics = append(systemMetrics, storage.SystemMetric{
 			MetricType: "database_size",
 			Value:      float64(dbSize),
 		})
 	} else {
 		log.Printf("Error getting database size: %v", err)
+		metrics.DatabaseConnected = false
+		// Try a simple ping to check if it's just a size query issue
+		if pingErr := c.db.Ping(); pingErr == nil {
+			metrics.DatabaseConnected = true
+		}
 	}
-
-	// Update current metrics and last collect time
-	c.mu.Lock()
-	c.current = metrics
-	c.lastCollectTime = time.Now()
-	c.mu.Unlock()
 
 	// Collect HAProxy stats
 	if stats, err := c.haproxy.GetStats(); err == nil {
+		metrics.HAProxyConnected = true
 		for _, backend := range stats.Backends {
 			status := "UP"
 			if !backend.Active {
@@ -197,12 +203,28 @@ func (c *Collector) collect() {
 				Details: "",
 			})
 		}
+	} else {
+		metrics.HAProxyConnected = false
+		log.Printf("Error getting HAProxy stats: %v", err)
 	}
 
 	// Collect Docker container stats
 	if c.dockerClient != nil {
 		c.collectDockerStats(&serviceStatuses)
+		metrics.DockerConnected = true
+	} else {
+		metrics.DockerConnected = false
 	}
+
+	// Check host connectivity
+	metrics.Pi5Connected = pingHost("192.168.2.136")
+	metrics.Pi52Connected = pingHost("192.168.2.135")
+
+	// Update current metrics and last collect time
+	c.mu.Lock()
+	c.current = metrics
+	c.lastCollectTime = time.Now()
+	c.mu.Unlock()
 
 	// Perform bulk insert in a single transaction
 	if err := c.db.BulkInsert(systemMetrics, serviceStatuses); err != nil {
@@ -214,6 +236,10 @@ func (c *Collector) collectDockerStats(serviceStatuses *[]storage.ServiceStatus)
 	containers, err := c.dockerClient.ContainerList(context.Background(), dockercontainer.ListOptions{All: true})
 	if err != nil {
 		log.Printf("Failed to list containers: %v", err)
+		// Mark Docker as disconnected if we can't list containers
+		c.mu.Lock()
+		c.current.DockerConnected = false
+		c.mu.Unlock()
 		return
 	}
 
@@ -291,4 +317,15 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dh %dm", hours, minutes)
 	}
 	return fmt.Sprintf("%dm", minutes)
+}
+
+func pingHost(host string) bool {
+	// Use ping command with timeout
+	cmd := exec.Command("ping", "-c", "1", "-W", "2", host)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("Ping to %s failed: %v, output: %s", host, err, string(output))
+		return false
+	}
+	return true
 }
